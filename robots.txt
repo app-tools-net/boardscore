@@ -3,4 +3,4 @@ User-agent: *
 Allow: /
 
 # Link to your website domain map once you have one
-Sitemap: https://github.io
+Sitemap: https://app-tools-net.github.io/boardscore/
