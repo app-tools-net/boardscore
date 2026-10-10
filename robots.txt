@@ -1,0 +1,6 @@
+# Welcome to BoardScore
+User-agent: *
+Allow: /
+
+# Link to your website domain map once you have one
+Sitemap: https://github.io

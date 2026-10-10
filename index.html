@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=1.0">
+    <title>BoardScore | Simple Game Scorekeeper</title>
+    <meta name="description" content="BoardScore is a free, simple, and privacy-first digital scorekeeper for board games, card games, and tabletop nights. No account or login required.">
+    <meta name="keywords" content="board game scorekeeper, online score tracker, tabletop score keeper, digital game scoreboard, simple point counter, cards score tracker, free score app browser">
+    <meta name="robots" content="index, follow">
+    <style>
+        :root { --bg-base: #f4f1ea; --surface: #ffffff; --text-main: #1c2d24; --text-muted: #53685c; --primary: #15803d; --primary-hover: #166534; --accent-gold: #eab308; --border-ui: #dcd7ca; --radius: 16px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg-base); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 16px; }
+        .main-wrapper { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 16px; }
+        .app-card { background-color: var(--surface); border: 2px solid var(--border-ui); border-radius: var(--radius); padding: 24px; box-shadow: 0 6px 12px rgba(28,45,36,0.05); }
+        h1 { text-align: center; font-size: 1.7rem; font-weight: 800; margin-bottom: 24px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--primary); }
+        .input-group { display: flex; gap: 8px; margin-bottom: 24px; }
+        input { flex: 1; padding: 14px 16px; border: 2px solid var(--border-ui); background-color: #faf9f6; color: var(--text-main); border-radius: 12px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+        input:focus { border-color: var(--primary); }
+        button { background-color: var(--primary); color: white; border: none; padding: 14px 20px; border-radius: 12px; font-weight: 700; font-size: 1rem; cursor: pointer; transition: background-color 0.2s, transform 0.1s; }
+        button:hover { background-color: var(--primary-hover); }
+        button:active { transform: scale(0.98); }
+        button.success-btn { background-color: var(--primary); width: 100%; margin-top: 20px; padding: 16px; }
+        .leaderboard-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+        .player-row { display: flex; justify-content: space-between; align-items: center; background: #faf9f6; padding: 14px 18px; border-radius: 14px; border: 1px solid var(--border-ui); }
+        .player-info { display: flex; align-items: center; gap: 10px; }
+        .rank-badge { font-size: 0.85rem; font-weight: 700; background: var(--border-ui); padding: 2px 8px; border-radius: 6px; color: var(--text-main); }
+        .player-row:first-child { border-color: var(--accent-gold); background: #fffdf5; }
+        .player-row:first-child .rank-badge { background: var(--accent-gold); color: #713f12; }
+        .player-name { font-weight: 600; }
+        .player-score { font-size: 1.4rem; font-weight: 700; color: var(--primary); }
+        .round-section { border-top: 2px dashed var(--border-ui); padding-top: 24px; margin-top: 24px; }
+        .round-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .score-input-wrapper { display: flex; flex-direction: column; gap: 6px; }
+        .score-input-wrapper label { font-size: 0.85rem; font-weight: 600; color: var(--text-muted); }
+        .history-section { margin-top: 24px; border-top: 1px solid var(--border-ui); padding-top: 16px; }
+        .history-title { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+        .history-log { font-size: 0.9rem; max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+        .history-item { padding: 6px 0; border-bottom: 1px dashed var(--border-ui); color: var(--text-muted); }
+        .fluid-ad-container { width: 100%; background-color: var(--surface); border: 1px dashed var(--text-muted); border-radius: 12px; padding: 12px; text-align: center; box-sizing: border-box; font-size: 0.8rem; color: var(--text-muted); }
+        .crawler-context-block { margin-top: 32px; border-top: 1px solid var(--border-ui); padding-top: 24px; text-align: left; }
+        .crawler-context-block h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 12px; color: var(--text-main); }
+        .crawler-context-block p { font-size: 0.85rem; line-height: 1.5; color: var(--text-muted); margin-bottom: 16px; }
+    </style>
+</head>
+<body>
+    <div class="main-wrapper">
+        <main class="app-card">
+            <h1>🎲 BoardScore</h1>
+            <div class="input-group" id="setupForm">
+                <input type="text" id="nameField" placeholder="Player name..." onkeypress="if(event.key==='Enter')createNewPlayer()">
+                <button onclick="createNewPlayer()">Add</button>
+            </div>
+            <div class="leaderboard-list" id="leaderboard"></div>
+            <div class="round-section" id="scoringPanel" style="display: none;">
+                <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 1.1rem;">Log Round Points</h3>
+                <div class="round-grid" id="inputGrid"></div>
+                <button class="success-btn" onclick="commitRoundScores()">Save Round</button>
+            </div>
+            <div class="history-section" id="historyPanel" style="display: none;">
+                <div class="history-title">Round History Ledger</div>
+                <div class="history-log" id="historyLog"></div>
+            </div>
+            <section class="crawler-context-block">
+                <h2>About BoardScore Tabletop Utility</h2>
+                <p>BoardScore provides clean digital score tracking variables for tabletop enthusiasts. Ditch missing pens and scratch paper for an automated round-by-round math ledger layout matrix engineered explicitly for multi-player games.</p>
+                <h2>Privacy-First Local Processing Architecture</h2>
+                <p>Unlike profile-walled utilities, your gaming data parameters process locally directly inside client-side Javascript LocalStorage execution targets. No tracking tokens, zero cookies, and 100% cloud network decoupling ensures absolute speed performance.</p>
+            </section>
+        </main>
+        <footer class="fluid-ad-container">
+            <div style="font-weight: 700; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Independent App Support</div>
+            This web utility is free and tracker-free.
+        </footer>
+    </div>
+    <script>
+        let gamePlayers = [], roundCounter = 1;
+        function createNewPlayer() {
+            const input = document.getElementById('nameField'), name = input.value.trim();
+            if (!name) return;
+            gamePlayers.push({ name: name, score: 0 });
+            input.value = ''; refreshInterface();
+        }
+        function refreshInterface() {
+            const board = document.getElementById('leaderboard'), panel = document.getElementById('scoringPanel'), grid = document.getElementById('inputGrid');
+            board.innerHTML = gamePlayers.map((player, idx) => `
+                <div class="player-row">
+                    <div class="player-info"><span class="rank-badge">#${idx + 1}</span><span class="player-name">${player.name}</span></div>
+                    <span class="player-score">${player.score}</span>
+                </div>
+            `).join('');
+            if (gamePlayers.length > 0) {
+                panel.style.display = 'block';
+                grid.innerHTML = gamePlayers.map((player) => `
+                    <div class="score-input-wrapper">
+                        <label>${player.name}</label>
+                        <input type="number" class="round-score-field" data-name="${player.name}" placeholder="0" inputmode="numeric">
+                    </div>
+                `).join('');
+            }
+        }
+        function commitRoundScores() {
+            const inputs = document.querySelectorAll('.round-score-field'); let roundSummary = [];
+            inputs.forEach(input => {
+                const targetName = input.getAttribute('data-name'), addedPoints = parseInt(input.value) || 0;
+                const match = gamePlayers.find(p => p.name === targetName);
+                if (match) { match.score += addedPoints; roundSummary.push(`${targetName}: +${addedPoints}`); }
+                input.value = '';
+            });
+            const historyPanel = document.getElementById('historyPanel'), historyLog = document.getElementById('historyLog');
+            historyPanel.style.display = 'block';
+            const logEntry = document.createElement('div'); logEntry.className = 'history-item';
+            logEntry.innerText = `Round ${roundCounter} ➡️ ${roundSummary.join(', ')}`;
+            historyLog.insertBefore(logEntry, historyLog.firstChild);
+            roundCounter++; gamePlayers.sort((a, b) => b.score - a.score); refreshInterface();
+        }
+    </script>
+</body>
+</html>
