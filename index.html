@@ -223,78 +223,196 @@
         <main class="app-card">
             <h1>🎲 BoardScore</h1>
             <div class="input-group" id="setupForm">
-                <input type="text" id="nameField" placeholder="Player name..." onkeypress="if(event.key==='Enter')createNewPlayer()">
-                <button onclick="createNewPlayer()">Add</button>
+                <input type="text" id="nameField" placeholder="Player name..." aria-label="Player name">
+                <button id="addPlayerBtn">Add</button>
             </div>
-            <div class="leaderboard-list" id="leaderboard"></div>
+            <div class="leaderboard-list" id="leaderboard" aria-live="polite"></div>
             <div class="round-section" id="scoringPanel" style="display: none;">
                 <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 1.1rem;">Log Round Points</h3>
                 <div class="round-grid" id="inputGrid"></div>
-                <button class="success-btn" onclick="commitRoundScores()">Save Round</button>
+                <button id="saveRoundBtn" class="success-btn">Save Round</button>
             </div>
             <div class="history-section" id="historyPanel" style="display: none;">
                 <div class="history-title">Round History Ledger</div>
-                <div class="history-log" id="historyLog"></div>
+                <div class="history-log" id="historyLog" aria-live="polite"></div>
             </div>
         </main>
     </div>
 
     <script>
-        let gamePlayers = [], roundCounter = 1;
+    (function(){
+        'use strict';
 
-        function createNewPlayer() {
-            const input = document.getElementById('nameField'), name = input.value.trim();
-            if (!name) return;
-            gamePlayers.push({ name: name, score: 0 });
-            input.value = '';
-            refreshInterface();
-        }
+        const STORAGE_KEY = 'boardscore_v1';
 
-        function refreshInterface() {
-            const board = document.getElementById('leaderboard'), panel = document.getElementById('scoringPanel'), grid = document.getElementById('inputGrid');
-            board.innerHTML = gamePlayers.map((player, idx) => `
-                <div class="player-row">
-                    <div class="player-info"><span class="rank-badge">#${idx + 1}</span><span class="player-name">${player.name}</span></div>
-                    <span class="player-score">${player.score}</span>
-                </div>
-            `).join('');
+        // State with safe fallbacks
+        let state = { players: [], history: [], round: 1 };
+        const supportsLocal = (function(){ try { return !!window.localStorage; } catch(e){ return false; } })();
 
-            if (gamePlayers.length > 0) {
-                panel.style.display = 'block';
-                grid.innerHTML = gamePlayers.map((player) => `
-                    <div class="score-input-wrapper">
-                        <label>${player.name}</label>
-                        <input type="number" class="round-score-field" data-name="${player.name}" placeholder="0" inputmode="numeric">
-                    </div>
-                `).join('');
+        function loadState(){
+            if (!supportsLocal) return;
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return;
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object') state = parsed;
+            } catch (e) {
+                // ignore corrupted data
+                console.warn('Could not load saved state:', e);
             }
         }
 
-        function commitRoundScores() {
-            const inputs = document.querySelectorAll('.round-score-field');
-            let roundSummary = [];
+        function saveState(){
+            if (!supportsLocal) return;
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { console.warn('Could not save state:', e); }
+        }
 
-            inputs.forEach(input => {
-                const targetName = input.getAttribute('data-name'), addedPoints = parseInt(input.value) || 0;
-                const match = gamePlayers.find(p => p.name === targetName);
-                if (match) {
-                    match.score += addedPoints;
-                    roundSummary.push(`${targetName}: +${addedPoints}`);
-                }
-                input.value = '';
-            });
+        // DOM refs
+        const nameField = document.getElementById('nameField');
+        const addPlayerBtn = document.getElementById('addPlayerBtn');
+        const leaderboard = document.getElementById('leaderboard');
+        const scoringPanel = document.getElementById('scoringPanel');
+        const inputGrid = document.getElementById('inputGrid');
+        const saveRoundBtn = document.getElementById('saveRoundBtn');
+        const historyPanel = document.getElementById('historyPanel');
+        const historyLog = document.getElementById('historyLog');
 
-            const historyPanel = document.getElementById('historyPanel'), historyLog = document.getElementById('historyLog');
-            historyPanel.style.display = 'block';
-            const logEntry = document.createElement('div');
-            logEntry.className = 'history-item';
-            logEntry.innerText = `Round ${roundCounter} ➡️ ${roundSummary.join(', ')}`;
-            historyLog.insertBefore(logEntry, historyLog.firstChild);
+        function sanitizeName(name){
+            // Trim and collapse whitespace, limit length
+            return name.replace(/\s+/g,' ').trim().slice(0, 60);
+        }
 
-            roundCounter++;
-            gamePlayers.sort((a, b) => b.score - a.score);
+        function createNewPlayer(){
+            const raw = sanitizeName(nameField.value || '');
+            if (!raw) return;
+            // avoid duplicate names
+            if (state.players.some(p => p.name.toLowerCase() === raw.toLowerCase())){
+                // focus existing name field
+                nameField.value = '';
+                nameField.focus();
+                return;
+            }
+            state.players.push({ name: raw, score: 0 });
+            nameField.value = '';
+            saveState();
             refreshInterface();
         }
+
+        function refreshInterface(){
+            // sort players by score desc
+            state.players.sort((a,b) => b.score - a.score);
+
+            // rebuild leaderboard securely using DOM methods
+            leaderboard.innerHTML = '';
+            state.players.forEach((player, idx) => {
+                const row = document.createElement('div'); row.className = 'player-row';
+                const info = document.createElement('div'); info.className = 'player-info';
+
+                const badge = document.createElement('span'); badge.className = 'rank-badge'; badge.textContent = `#${idx + 1}`;
+                const name = document.createElement('span'); name.className = 'player-name'; name.textContent = player.name;
+                info.appendChild(badge); info.appendChild(name);
+
+                const score = document.createElement('span'); score.className = 'player-score'; score.textContent = String(player.score);
+
+                row.appendChild(info); row.appendChild(score);
+                leaderboard.appendChild(row);
+            });
+
+            // scoring inputs
+            inputGrid.innerHTML = '';
+            if (state.players.length > 0){
+                scoringPanel.style.display = 'block';
+                state.players.forEach((player, idx) => {
+                    const wrapper = document.createElement('div'); wrapper.className = 'score-input-wrapper';
+                    const lbl = document.createElement('label'); lbl.textContent = player.name;
+                    const inp = document.createElement('input'); inp.type = 'number'; inp.className = 'round-score-field'; inp.setAttribute('inputmode','numeric');
+                    inp.dataset.name = player.name; inp.placeholder = '0';
+                    // prevent non-number entry and limit values
+                    inp.addEventListener('input', () => {
+                        if (inp.value && !/^[-+]?\d+$/.test(inp.value)) inp.value = inp.value.replace(/[^-+0-9]/g,'');
+                        if (inp.value.length > 6) inp.value = inp.value.slice(0,6);
+                    });
+                    wrapper.appendChild(lbl); wrapper.appendChild(inp); inputGrid.appendChild(wrapper);
+                });
+            } else {
+                scoringPanel.style.display = 'none';
+            }
+
+            // history
+            historyLog.innerHTML = '';
+            if (state.history && state.history.length){
+                historyPanel.style.display = 'block';
+                state.history.slice().reverse().forEach(entry => {
+                    const item = document.createElement('div'); item.className = 'history-item';
+                    item.textContent = entry; historyLog.appendChild(item);
+                });
+            } else {
+                historyPanel.style.display = 'none';
+            }
+        }
+
+        function commitRoundScores(){
+            const inputs = Array.from(document.querySelectorAll('.round-score-field'));
+            if (!inputs.length) return;
+            const roundSummary = [];
+            inputs.forEach(inp => {
+                const name = inp.dataset.name;
+                const val = inp.value.trim();
+                const added = parseInt(val, 10) || 0;
+                const player = state.players.find(p => p.name === name);
+                if (player){
+                    player.score = (player.score || 0) + added;
+                    roundSummary.push(`${name}: +${added}`);
+                }
+                inp.value = '';
+            });
+            if (roundSummary.length){
+                const text = `Round ${state.round} ➡️ ${roundSummary.join(', ')}`;
+                state.history = state.history || [];
+                state.history.push(text);
+                state.round = (state.round || 1) + 1;
+                saveState();
+                refreshInterface();
+            }
+        }
+
+        // Keyboard accessibility: Enter to add player
+        nameField.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); createNewPlayer(); } });
+        addPlayerBtn.addEventListener('click', createNewPlayer);
+        saveRoundBtn.addEventListener('click', commitRoundScores);
+
+        // export/import helpers (useful when moving domains)
+        function exportState(){
+            try {
+                const data = JSON.stringify(state);
+                const blob = new Blob([data], {type:'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = 'boardscore-data.json'; document.body.appendChild(a);
+                a.click(); a.remove(); URL.revokeObjectURL(url);
+            } catch (e){ alert('Export failed'); }
+        }
+
+        function importState(file){
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(){
+                try{
+                    const parsed = JSON.parse(reader.result);
+                    if (parsed && typeof parsed === 'object'){
+                        state = parsed; saveState(); refreshInterface();
+                    }
+                } catch(e){ alert('Import failed: invalid file'); }
+            };
+            reader.readAsText(file);
+        }
+
+        // public hooks for manual export/import (not exposed in UI by default)
+        window.BoardScore = { exportState, importState };
+
+        // init
+        loadState(); refreshInterface();
+
+    })();
     </script>
 </body>
 </html>
