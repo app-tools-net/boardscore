@@ -244,8 +244,6 @@
         'use strict';
 
         const STORAGE_KEY = 'boardscore_v1';
-
-        // State with safe fallbacks
         let state = { players: [], history: [], round: 1 };
         const supportsLocal = (function(){ try { return !!window.localStorage; } catch(e){ return false; } })();
 
@@ -257,7 +255,6 @@
                 const parsed = JSON.parse(raw);
                 if (parsed && typeof parsed === 'object') state = parsed;
             } catch (e) {
-                // ignore corrupted data
                 console.warn('Could not load saved state:', e);
             }
         }
@@ -267,7 +264,10 @@
             try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { console.warn('Could not save state:', e); }
         }
 
-        // DOM refs
+        function sanitizeName(name){
+            return name.replace(/\s+/g,' ').trim().slice(0, 60);
+        }
+
         const nameField = document.getElementById('nameField');
         const addPlayerBtn = document.getElementById('addPlayerBtn');
         const leaderboard = document.getElementById('leaderboard');
@@ -277,17 +277,10 @@
         const historyPanel = document.getElementById('historyPanel');
         const historyLog = document.getElementById('historyLog');
 
-        function sanitizeName(name){
-            // Trim and collapse whitespace, limit length
-            return name.replace(/\s+/g,' ').trim().slice(0, 60);
-        }
-
         function createNewPlayer(){
             const raw = sanitizeName(nameField.value || '');
             if (!raw) return;
-            // avoid duplicate names
-            if (state.players.some(p => p.name.toLowerCase() === raw.toLowerCase())){
-                // focus existing name field
+            if (state.players.some(p => p.name.toLowerCase() === raw.toLowerCase())) {
                 nameField.value = '';
                 nameField.focus();
                 return;
@@ -299,52 +292,48 @@
         }
 
         function refreshInterface(){
-            // sort players by score desc
             state.players.sort((a,b) => b.score - a.score);
-
-            // rebuild leaderboard securely using DOM methods
             leaderboard.innerHTML = '';
             state.players.forEach((player, idx) => {
                 const row = document.createElement('div'); row.className = 'player-row';
                 const info = document.createElement('div'); info.className = 'player-info';
 
                 const badge = document.createElement('span'); badge.className = 'rank-badge'; badge.textContent = `#${idx + 1}`;
-                const name = document.createElement('span'); name.className = 'player-name'; name.textContent = player.name;
-                info.appendChild(badge); info.appendChild(name);
+                const playerName = document.createElement('span'); playerName.className = 'player-name'; playerName.textContent = player.name;
+                info.appendChild(badge); info.appendChild(playerName);
 
                 const score = document.createElement('span'); score.className = 'player-score'; score.textContent = String(player.score);
-
                 row.appendChild(info); row.appendChild(score);
                 leaderboard.appendChild(row);
             });
 
-            // scoring inputs
             inputGrid.innerHTML = '';
-            if (state.players.length > 0){
+            if (state.players.length > 0) {
                 scoringPanel.style.display = 'block';
-                state.players.forEach((player, idx) => {
+                state.players.forEach((player) => {
                     const wrapper = document.createElement('div'); wrapper.className = 'score-input-wrapper';
-                    const lbl = document.createElement('label'); lbl.textContent = player.name;
-                    const inp = document.createElement('input'); inp.type = 'number'; inp.className = 'round-score-field'; inp.setAttribute('inputmode','numeric');
-                    inp.dataset.name = player.name; inp.placeholder = '0';
-                    // prevent non-number entry and limit values
-                    inp.addEventListener('input', () => {
-                        if (inp.value && !/^[-+]?\d+$/.test(inp.value)) inp.value = inp.value.replace(/[^-+0-9]/g,'');
-                        if (inp.value.length > 6) inp.value = inp.value.slice(0,6);
+                    const label = document.createElement('label'); label.textContent = player.name;
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.className = 'round-score-field';
+                    input.setAttribute('inputmode', 'numeric');
+                    input.dataset.name = player.name;
+                    input.placeholder = '0';
+                    input.addEventListener('input', () => {
+                        if (input.value && !/^[-+]?\d+$/.test(input.value)) input.value = input.value.replace(/[^-+0-9]/g, '');
+                        if (input.value.length > 6) input.value = input.value.slice(0, 6);
                     });
-                    wrapper.appendChild(lbl); wrapper.appendChild(inp); inputGrid.appendChild(wrapper);
+                    wrapper.appendChild(label); wrapper.appendChild(input); inputGrid.appendChild(wrapper);
                 });
             } else {
                 scoringPanel.style.display = 'none';
             }
 
-            // history
             historyLog.innerHTML = '';
-            if (state.history && state.history.length){
+            if (state.history && state.history.length) {
                 historyPanel.style.display = 'block';
                 state.history.slice().reverse().forEach(entry => {
-                    const item = document.createElement('div'); item.className = 'history-item';
-                    item.textContent = entry; historyLog.appendChild(item);
+                    const item = document.createElement('div'); item.className = 'history-item'; item.textContent = entry; historyLog.appendChild(item);
                 });
             } else {
                 historyPanel.style.display = 'none';
@@ -355,63 +344,64 @@
             const inputs = Array.from(document.querySelectorAll('.round-score-field'));
             if (!inputs.length) return;
             const roundSummary = [];
-            inputs.forEach(inp => {
-                const name = inp.dataset.name;
-                const val = inp.value.trim();
-                const added = parseInt(val, 10) || 0;
+            inputs.forEach(input => {
+                const name = input.dataset.name;
+                const addedPoints = parseInt(input.value, 10) || 0;
                 const player = state.players.find(p => p.name === name);
-                if (player){
-                    player.score = (player.score || 0) + added;
-                    roundSummary.push(`${name}: +${added}`);
+                if (player) {
+                    player.score = (player.score || 0) + addedPoints;
+                    roundSummary.push(`${name}: +${addedPoints}`);
                 }
-                inp.value = '';
+                input.value = '';
             });
-            if (roundSummary.length){
-                const text = `Round ${state.round} ➡️ ${roundSummary.join(', ')}`;
+
+            if (roundSummary.length) {
                 state.history = state.history || [];
-                state.history.push(text);
+                state.history.push(`Round ${state.round} ➡️ ${roundSummary.join(', ')}`);
                 state.round = (state.round || 1) + 1;
                 saveState();
                 refreshInterface();
             }
         }
 
-        // Keyboard accessibility: Enter to add player
         nameField.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); createNewPlayer(); } });
         addPlayerBtn.addEventListener('click', createNewPlayer);
         saveRoundBtn.addEventListener('click', commitRoundScores);
 
-        // export/import helpers (useful when moving domains)
+        // Export/import helpers to make moving domains safer
         function exportState(){
             try {
                 const data = JSON.stringify(state);
-                const blob = new Blob([data], {type:'application/json'});
+                const blob = new Blob([data], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = 'boardscore-data.json'; document.body.appendChild(a);
-                a.click(); a.remove(); URL.revokeObjectURL(url);
-            } catch (e){ alert('Export failed'); }
+                const a = document.createElement('a');
+                a.href = url; a.download = 'boardscore-data.json';
+                document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('Export failed');
+            }
         }
 
         function importState(file){
             if (!file) return;
             const reader = new FileReader();
             reader.onload = function(){
-                try{
+                try {
                     const parsed = JSON.parse(reader.result);
-                    if (parsed && typeof parsed === 'object'){
+                    if (parsed && typeof parsed === 'object') {
                         state = parsed; saveState(); refreshInterface();
                     }
-                } catch(e){ alert('Import failed: invalid file'); }
+                } catch (e) {
+                    alert('Import failed: invalid file');
+                }
             };
             reader.readAsText(file);
         }
 
-        // public hooks for manual export/import (not exposed in UI by default)
         window.BoardScore = { exportState, importState };
 
-        // init
-        loadState(); refreshInterface();
-
+        loadState();
+        refreshInterface();
     })();
     </script>
 </body>
